@@ -1,0 +1,102 @@
+services:
+  # ---- LLM Proxy (Azure OpenAI format → DeepSeek / your endpoint) ----
+  proxy:
+    image: new-graphrag-img
+    container_name: graphrag-proxy
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./proxy_server.py:/app/proxy_server.py:ro
+    environment:
+      - CHAT_BASE_URL=${CHAT_BASE_URL}
+      - CHAT_API_KEY=${CHAT_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL}
+      - EMBED_BASE_URL=${EMBED_BASE_URL}
+      - EMBED_API_KEY=${EMBED_API_KEY}
+      - EMBED_MODEL=${EMBED_MODEL}
+    command: bash -c "pip install httpx -q && python3 /app/proxy_server.py"
+    restart: unless-stopped
+
+  # ---- PostgreSQL 16 + AGE + pgvector ----
+  postgres:
+    image: new-graphrag-img
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AGE_USER}
+      POSTGRES_PASSWORD: ${AGE_PASSWORD}
+      POSTGRES_DB: ${AGE_DB}
+    volumes:
+      - local_postgres_data:/var/lib/postgresql/data
+      - graphrag_data:/app/graphrag-folder
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AGE_USER} -d ${AGE_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # ---- GraphRAG index (one-off) ----
+  graphrag-index:
+    image: new-graphrag-img
+    container_name: graphrag-index
+    volumes:
+      - graphrag_data:/app/graphrag-folder
+      - ./settings.yaml:/app/graphrag-folder/settings.yaml:ro
+      - ${PROJ_PATH}/project_folder/data/prompts:/app/graphrag-folder/prompts:ro
+      - ${PROJ_PATH}/project_folder/data/input:/app/graphrag-folder/input:ro
+    depends_on:
+      proxy:
+        condition: service_started
+    env_file: .env
+    command: >
+      sh -c "
+        echo 'Input files:' &&
+        ls /app/graphrag-folder/input/ &&
+        graphrag index --root /app/graphrag-folder
+      "
+    restart: "no"
+
+  # ---- Build AGE graph from parquet (one-off) ----
+  build-graph:
+    image: new-graphrag-img
+    container_name: build-graph
+    volumes:
+      - graphrag_data:/app/graphrag-folder
+      - ${PROJ_PATH}/project_folder/build-graph.py:/app/build-graph.py:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      graphrag-index:
+        condition: service_completed_successfully
+    env_file: .env
+    command: python3 /app/build-graph.py
+    restart: "no"
+
+  # ---- MCP server (persistent) ----
+  mcp-agent:
+    image: new-graphrag-img
+    container_name: mcp-agent
+    volumes:
+      - graphrag_data:/app/graphrag-folder
+      - ./settings.yaml:/app/graphrag-folder/settings.yaml:ro
+      - ${PROJ_PATH}/project_folder/data/prompts:/app/graphrag-folder/prompts:ro
+      - ${PROJ_PATH}/project_folder/mcp_server.py:/app/mcp_server.py:ro
+      - ./run_mcp.py:/app/run_mcp.py:ro
+    ports:
+      - "8011:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      proxy:
+        condition: service_started
+      build-graph:
+        condition: service_completed_successfully
+    env_file: .env
+    command: python3 /app/run_mcp.py
+    restart: unless-stopped
+
+volumes:
+  local_postgres_data:
+  graphrag_data:

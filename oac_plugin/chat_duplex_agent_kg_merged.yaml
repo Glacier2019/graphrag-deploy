@@ -1,0 +1,241 @@
+default:
+  logger:
+    log_level: INFO
+  service:
+    host: 0.0.0.0
+    port: 8283
+    cert_file: ssl_certs/localhost.crt
+    cert_key: ssl_certs/localhost.key
+    manager_port: 8282
+  history:
+    retention_mode: by_both
+    max_events: 1000
+    max_age_seconds: 3600
+    cleanup_interval_seconds: 30
+  chat_engine:
+    model_root: models
+    concurrent_limit: 1
+    handler_search_path:
+    - src/handlers
+    - /data/cy/graphrag-deploy/oac_plugin
+    handler_configs:
+      RtcClient:
+        module: client/rtc_client/client_handler_rtc
+        connection_ttl: 900
+        output_video_fps: 25
+      InterruptHandler:
+        module: logic/interrupt/interrupt_handler
+      SileroVad:
+        module: vad/silerovad/duplex_vad_handler
+        speaking_threshold: 0.25
+        start_delay: 1024
+        end_delay: 32000
+        early_end_delay: 5000
+        early_end_repeat_delay: 1000
+        buffer_look_back: 2048
+        speech_padding: 512
+        volume_threshold: -50
+        post_end_monitor_samples: 32000
+        reconnect_threshold_samples: 32000
+        post_end_energy_threshold: -5
+      SenseVoice:
+        enabled: true
+        module: asr/sensevoice/asr_handler_sensevoice
+        model_name: iic/SenseVoiceSmall
+        input_type_override:
+          HUMAN_AUDIO: HUMAN_DUPLEX_AUDIO
+        output_type_override:
+          HUMAN_TEXT: HUMAN_DUPLEX_TEXT
+      SmartTurnEOU:
+        enabled: false
+        module: vad/smart_turn_eou/eou_handler_smart_turn
+        threshold: 0.8
+        max_buffer_seconds: 300.0
+        sample_rate: 16000
+        model_path: models/smart_turn/smart-turn-v3.1-cpu.onnx
+        input_type_override:
+          HUMAN_AUDIO: HUMAN_DUPLEX_AUDIO
+      SemanticTurnDetector:
+        enabled: true
+        module: llm/semantic_turn_detector/semantic_turn_detector_handler
+        duplex_mode: true
+        api_url: http://localhost:11434/v1
+        api_key: ollama
+        model_name: qwen3:8b-8k
+        enable_interrupt_detection: true
+        interrupt_on_any_speech: false
+        min_text_length_for_interrupt: 2
+        enable_completion_detection: false  # ★ VAD post_end已覆盖，省一次LLM
+        min_text_length_for_completion: 1
+        interrupt_judge_api_url: "http://localhost:11434/v1"
+        interrupt_judge_api_key: "ollama"
+        interrupt_judge_model_name: qwen2.5:0.5b-4k  # ★ 0.5b意图+8b打断并行，避免串行排队
+        request_timeout: 5.0
+        max_context_turns: 3
+      KgEnrich:
+        module: kg_enrich_handler
+        output_mode: text
+        graphrag_enabled: true
+        mcp_url: http://localhost:8011
+        mcp_timeout: 3.0
+        max_entities: 3
+        max_relations: 5
+        context_max_chars: 600
+        min_interval_seconds: 1
+        llm_proxy_enabled: true
+        llm_proxy_rules: /data/cy/graphrag-deploy/oac_plugin/llm_proxy_rules.yaml
+        llm_proxy_port: 11440
+      CosyVoice:
+        enabled: true
+        module: tts/bailian_tts/tts_handler_cosyvoice_bailian
+        voice: longxing_v3
+        model_name: cosyvoice-v3-flash
+      PerceptionAgent:
+        enabled: true
+        module: agent/perception/perception_handler
+        summary_interval: 5.0
+        max_buffer_frames: 30
+        key_frame_strategy: interval
+        key_frame_interval: 10
+        vision_model_type: openai
+        llm_model: qwen3-vl-flash
+        api_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+        max_frames: 8
+        enable_event_detection: true
+        event_detection_interval: 5
+        max_concurrent_requests: 3
+      ChatAgent:
+        enabled: true
+        module: agent/chat_agent_handler
+        llm_model: qwen3:14b-8k
+        api_url: http://localhost:11440/v1
+        api_key: ollama
+        input_type_override:
+          HUMAN_TEXT: AUGMENTED_HUMAN_TEXT
+        persona_max_chars: 2500
+        perception_max_chars: 800
+        perception_max_entries: 100
+        perception_decay_rate: 0.1
+        max_dialogue_turns: 20
+        context_compact:
+          enabled: true
+          compact_threshold: 15
+          keep_recent: 5
+          save_transcript: true
+          rehydrate_task_brief: true
+          rehydrate_env_state: true
+        tool_use:
+          enabled: true
+          max_tool_rounds: 5
+          register_demo_tools: true
+        oc_bridge:
+          enabled: true
+          plugin_tools_cmd: node /home/luyi/Code/openclaw/dist/mcp/plugin-tools-serve.js
+          gateway_http_url: http://localhost:18789
+          callback_port: 8011
+        proactive:
+          enabled: true
+          event_triggers:
+            waving:
+              enabled: true
+              cooldown: 30.0
+              hint: 友好回应用户招呼
+            showing_object:
+              enabled: true
+              cooldown: 30.0
+              hint: 主动询问展示物品
+            asking_for_attention:
+              enabled: true
+              cooldown: 30.0
+              hint: 积极回应寻求注意
+            arriving:
+              enabled: true
+              cooldown: 60.0
+              hint: 适当欢迎
+            leaving:
+              enabled: true
+              cooldown: 60.0
+              hint: 适当道别
+          idle_trigger:
+            enabled: false
+            idle_seconds: 60.0
+            hint: 用户安静时可主动说话
+            mode_overrides:
+              companion: 120.0
+              office: 300.0
+          pending_confirmation_trigger:
+            enabled: true
+            idle_seconds: 15.0
+            cooldown: 30.0
+            hint: 有待确认的审批请求，先说明再询问
+        stable_core: '你是一个具有视觉能力的实时数字人助手，正在通过摄像头与用户进行面对面对话。
+
+
+          ## 输出约束
+
+          - 用口语化的自然语言回答，语气亲切
+
+          - 保持简短（通常 2-3 句），除非用户明确要求详细说明
+
+          - 不要输出 Markdown 格式、代码块或列表符号
+
+          - 不要自称"AI"或"语言模型"，你就是这个数字人角色本身
+
+
+          ## 视觉规则
+
+          - <environment-state> 标签描述的是你当前看到的持续性环境状态
+
+          - 可以自然地提及观察到的内容，但不要每句都提
+
+
+          ## 知识图谱使用
+
+          你连接了一个知识图谱（GraphRAG）。用户消息开头包含"知识图谱参考"信息块，
+
+          其中有后台知识库的统计数据或实体关系。当用户问到数量、文章、实体问题时，
+
+          直接引用该信息回答。图谱信息权威性高于你的训练数据。
+
+
+          ## 工具使用
+
+          你拥有以下能力，在合适时机主动使用：
+
+          - 当用户提到过去的事、偏好、之前的约定时 → 用 memory_search 搜索长期记忆
+
+          - 当用户问"给你布置过什么任务"、定时提醒、日程时 → 用 list_scheduled_tasks 查看
+
+          - 当不确定用户称呼或自身角色设定时 → 用 get_agent_profile 获取
+
+          - 工具返回结果后，用自然口语将结果融入回复，不要原样复述 JSON
+
+
+          ## 结构化标签说明
+
+          - <environment-state>: 当前环境的持续状态描述
+
+          - <observation event="true">: 刚发生的环境事件
+
+          - <dialogue-summary>: 之前对话的压缩摘要'
+        persona_snapshot: '性格：友善亲切，像朋友一样交流。观察细致，能注意到用户状态变化。
+
+          口吻：轻松自然，适当关心用户情绪。'
+      FlashHead:
+        module: avatar/flashhead/avatar_handler_flashhead
+        ckpt_dir: models/SoulX-FlashHead-1_3B
+        wav2vec_dir: models/wav2vec2-base-960h
+        model_type: lite
+        fp8: true
+        cond_image_path: resource/avatar/flashhead/girl.png
+        fps: 25
+        base_seed: 42
+        use_face_crop: false
+        debug: false
+        idle_noise_amplitude: 0.002
+      Manager:
+        module: manager/handler_data_tool
+        buffer_limit: 150
+        preview_bytes: 4096
+        preview_chars: 512
+        include_binary_preview: false

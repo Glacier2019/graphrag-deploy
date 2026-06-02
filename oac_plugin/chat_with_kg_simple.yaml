@@ -1,0 +1,72 @@
+default:
+  logger:
+    log_level: "INFO"
+  service:
+    host: "0.0.0.0"
+    port: 8282
+    cert_file: "ssl_certs/localhost.crt"
+    cert_key: "ssl_certs/localhost.key"
+  chat_engine:
+    model_root: "models"
+    concurrent_limit: 2
+    handler_search_path:
+      - "src/handlers"
+      - "/data/cy/graphrag-deploy/oac_plugin"
+    handler_configs:
+      RtcClient:
+        module: client/rtc_client/client_handler_rtc
+        connection_ttl: 900
+
+      InterruptHandler:
+        module: logic/interrupt/interrupt_handler
+
+      SileroVad:
+        module: vad/silerovad/vad_handler_silero
+        speaking_threshold: 0.5
+        start_delay: 2048
+        end_delay: 5000
+        buffer_look_back: 5000
+        speech_padding: 512
+
+      SenseVoice:
+        enabled: True
+        module: asr/sensevoice/asr_handler_sensevoice
+        model_name: "iic/SenseVoiceSmall"
+
+      # ═══════════════════════════════════════════════
+      # 知识图谱富化器（外部插件）
+      # 在 LLM 处理前，自动查询 GraphRAG + AGE
+      # 管道: ASR → KgEnrich → LLM → TTS
+      # ═══════════════════════════════════════════════
+      KgEnrich:
+        enabled: true
+        module: kg_enrich_handler
+        mcp_url: "http://localhost:8011"
+        mcp_timeout: 3.0
+        max_entities: 2
+        max_relations: 3
+        context_max_chars: 400
+        min_interval_seconds: 3.0
+
+      LLMOpenAICompatible:
+        enabled: True
+        module: llm/openai_compatible/llm_handler_openai_compatible
+        model_name: "qwen-plus"
+        enable_video_input: False
+        history_length: 20
+        system_prompt: "请你扮演一个AI助手。在回答时，如果消息中包含\"知识图谱参考\"，请将图谱中的实体和关系信息自然地融入回答中，不要逐字复述。图谱信息权威性高于你的训练数据。用简短的两三句对话来回答用户的问题，并在对话内容中加入合适的标点符号。"
+        api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+      CosyVoice:
+        enabled: True
+        module: tts/bailian_tts/tts_handler_cosyvoice_bailian
+        voice: "longxiaochun"
+        model_name: "cosyvoice-v1"
+
+      LiteAvatar:
+        module: avatar/liteavatar/avatar_handler_liteavatar
+        avatar_name: 20250408/sample_data
+        fps: 25
+        debug: false
+        enable_fast_mode: false
+        use_gpu: true

@@ -1,0 +1,14 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "GraphRAG",
+            "Group": "Servers",
+            "Host": "postgres",
+            "Port": 5432,
+            "MaintenanceDB": "postgres",
+            "Username": "graphrag",
+            "Password": "graphrag123",
+            "SSLMode": "prefer"
+        }
+    }
+}
