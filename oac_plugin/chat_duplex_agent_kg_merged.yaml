@@ -64,7 +64,7 @@ default:
         model_name: qwen3:8b-8k
         enable_interrupt_detection: true
         interrupt_on_any_speech: false
-        min_text_length_for_interrupt: 2
+        min_text_length_for_interrupt: 2  # ★ 2→1，单字"停""不""好"也可打断
         enable_completion_detection: false  # ★ VAD post_end已覆盖，省一次LLM
         min_text_length_for_completion: 1
         interrupt_judge_api_url: "http://localhost:11434/v1"
@@ -76,8 +76,29 @@ default:
         module: kg_enrich_handler
         output_mode: text
         graphrag_enabled: true
-        mcp_url: http://localhost:8011
+        rag_engine: auto                          # graphrag | lightrag | auto
+        mcp_url: http://localhost:8011            # 主 MCP (播客库)
         mcp_timeout: 3.0
+        # ═════════════════════════════════════
+        # ★ GraphRAG 知识库开关 (AGE图数据库)
+        # ═════════════════════════════════════
+        kb_podcast_enabled: false                  # 播客库 — 10篇 Behind the Tech
+        kb_podcast_url: http://localhost:8011    # AGE graph: graphRAG
+        kb_research_enabled: true                # 科研库 — 公路工程技术标准
+        kb_research_url: http://localhost:8013   # AGE graph: graphRAG_research
+        kb_gaokao_enabled: false                 # 高考库 — MCP启动异常，暂关闭
+        kb_gaokao_url: http://localhost:8012     # AGE graph: graphRAG_gaokao
+        # ═════════════════════════════════════
+        # ★ LightRAG 知识库开关 (向量语义搜索)
+        # ═════════════════════════════════════
+        kb_lightrag_research_enabled: true       # LightRAG科研 (:9621)
+        kb_lightrag_research_url: http://localhost:9621
+        kb_lightrag_podcast_enabled: false       # LightRAG播客 (:9622)
+        kb_lightrag_podcast_url: http://localhost:9622
+        kb_lightrag_gaokao_enabled: false        # LightRAG高考 (:9623)
+        kb_lightrag_gaokao_url: http://localhost:9623
+        lightrag_timeout: 5.0
+        # ═════════════════════════════════════
         max_entities: 3
         max_relations: 5
         context_max_chars: 600
